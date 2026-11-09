@@ -1,0 +1,2 @@
+---
+monitoring_overlay_dir: "{{ app_dir }}/monitoring-overlay"

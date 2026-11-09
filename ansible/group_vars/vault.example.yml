@@ -1,0 +1,9 @@
+---
+# Example vault file. Create a real vault with:
+#   ansible-vault create group_vars/vault.yml
+# Then reference variables from group_vars/all.yml or playbooks.
+#
+# Never commit the decrypted vault or plaintext secrets.
+
+# grafana_admin_password: "replace-with-strong-password"
+# llm_api_key: "optional-cloud-llm-key"

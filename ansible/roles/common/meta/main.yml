@@ -1,0 +1,8 @@
+---
+galaxy_info:
+  author: Learning Reference
+  role_name: common
+  description: Base packages, timezone, and sysctl for AIOps hosts
+  license: MIT
+  min_ansible_version: "2.14"
+dependencies: []

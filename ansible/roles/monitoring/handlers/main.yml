@@ -1,0 +1,9 @@
+---
+- name: Reload prometheus
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -p {{ compose_project_name }} exec -T prometheus
+      kill -HUP 1
+    chdir: "{{ app_dir }}"
+  failed_when: false
+  changed_when: true

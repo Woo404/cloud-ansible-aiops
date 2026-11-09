@@ -1,0 +1,58 @@
+---
+# Read-only health checks against a deployed host.
+#
+# Usage:
+#   ansible-playbook -i inventory/aliyun.ini playbooks/healthcheck.yml
+
+- name: Healthcheck AIOps stack
+  hosts: aiops
+  become: false
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+
+  tasks:
+    - name: Check API /healthz
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ app_http_port }}/healthz"
+        status_code: 200
+        timeout: 10
+      register: api_health
+      failed_when: false
+
+    - name: Check Prometheus ready
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ prometheus_http_port }}/-/ready"
+        status_code: 200
+        timeout: 10
+      register: prom_ready
+      failed_when: false
+
+    - name: Check Grafana health
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ grafana_http_port }}/api/health"
+        status_code: 200
+        timeout: 10
+      register: grafana_health
+      failed_when: false
+
+    - name: Check Alertmanager ready
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ alertmanager_http_port }}/-/ready"
+        status_code: 200
+        timeout: 10
+      register: am_ready
+      failed_when: false
+
+    - name: Summarize health
+      ansible.builtin.debug:
+        msg:
+          - "API:          {{ 'OK' if api_health.status | default(0) == 200 else 'FAIL (' ~ (api_health.status | default('n/a') | string) ~ ')' }}"
+          - "Prometheus:   {{ 'OK' if prom_ready.status | default(0) == 200 else 'FAIL' }}"
+          - "Grafana:      {{ 'OK' if grafana_health.status | default(0) == 200 else 'FAIL' }}"
+          - "Alertmanager: {{ 'OK' if am_ready.status | default(0) == 200 else 'FAIL' }}"
+
+    - name: Fail play if API is down
+      ansible.builtin.fail:
+        msg: "API /healthz did not return 200"
+      when: api_health.status | default(0) != 200

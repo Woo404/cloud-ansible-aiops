@@ -1,0 +1,77 @@
+---
+# Roll back to a previously recorded compose project state.
+# Expects a backup directory created by the aiops_app role:
+#   {{ app_dir }}/.rollback/<timestamp>/
+#
+# Usage:
+#   ansible-playbook -i inventory/aliyun.ini playbooks/rollback.yml \
+#     -e rollback_stamp=20260101T120000Z
+
+- name: Rollback AIOps compose stack
+  hosts: aiops
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+  vars:
+    rollback_stamp: ""
+
+  tasks:
+    - name: Require rollback_stamp
+      ansible.builtin.assert:
+        that:
+          - rollback_stamp | length > 0
+        fail_msg: "Pass -e rollback_stamp=<timestamp> from {{ app_dir }}/.rollback/"
+
+    - name: Set rollback path
+      ansible.builtin.set_fact:
+        rollback_dir: "{{ app_dir }}/.rollback/{{ rollback_stamp }}"
+
+    - name: Check rollback directory exists
+      ansible.builtin.stat:
+        path: "{{ rollback_dir }}/docker-compose.yml"
+      register: rollback_compose
+
+    - name: Fail if rollback artifacts missing
+      ansible.builtin.fail:
+        msg: "No docker-compose.yml under {{ rollback_dir }}"
+      when: not rollback_compose.stat.exists
+
+    - name: Stop current compose project
+      ansible.builtin.command:
+        cmd: docker compose -p {{ compose_project_name }} down
+        chdir: "{{ app_dir }}"
+      register: compose_down
+      changed_when: compose_down.rc == 0
+      failed_when: false
+
+    - name: Restore compose file from rollback snapshot
+      ansible.builtin.copy:
+        src: "{{ rollback_dir }}/docker-compose.yml"
+        dest: "{{ app_dir }}/docker-compose.yml"
+        remote_src: true
+        mode: "0644"
+
+    - name: Restore .env if present in snapshot
+      ansible.builtin.copy:
+        src: "{{ rollback_dir }}/.env"
+        dest: "{{ app_dir }}/.env"
+        remote_src: true
+        mode: "0600"
+      failed_when: false
+
+    - name: Start restored compose stack
+      ansible.builtin.command:
+        cmd: docker compose -p {{ compose_project_name }} up -d
+        chdir: "{{ app_dir }}"
+      register: compose_up
+      changed_when: compose_up.rc == 0
+
+    - name: Wait for health after rollback
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ app_http_port }}/healthz"
+        status_code: 200
+      register: health
+      retries: 20
+      delay: 5
+      until: health.status is defined and health.status == 200

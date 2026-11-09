@@ -1,0 +1,59 @@
+---
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python lint tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible-core ansible-lint yamllint
+
+      - name: yamllint
+        run: yamllint -c .yamllint ansible monitoring .github
+
+      - name: ansible-lint
+        working-directory: ansible
+        run: |
+          ansible-galaxy collection install -r requirements.yml
+          ansible-lint playbooks/*.yml
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: terraform fmt -check
+        run: terraform fmt -check -recursive terraform
+
+      - name: terraform validate (aliyun example)
+        working-directory: terraform/aliyun
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+      - name: terraform validate (aws example)
+        working-directory: terraform/aws
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+      - name: Markdown non-empty check
+        run: |
+          for f in README.md TUTORIAL_CN.md docs/architecture.md runbooks/*.md; do
+            test -s "$f"
+          done

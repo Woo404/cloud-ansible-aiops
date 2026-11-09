@@ -1,0 +1,69 @@
+---
+groups:
+  - name: aiops_slo
+    interval: 30s
+    rules:
+      # Availability: fraction of successful non-5xx HTTP responses over 5m
+      - record: aiops:availability:ratio_5m
+        expr: |
+          (
+            sum(rate(http_requests_total{code!~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_requests_total[5m])), 1e-9)
+          )
+
+      - alert: AIOpsAvailabilityLow
+        expr: aiops:availability:ratio_5m < 0.995
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AIOps availability below 99.5% SLO"
+          description: "5m availability is {{ $value | humanizePercentage }}. See runbooks/service-down."
+
+      # p95 latency (histogram required; falls back gracefully if metric absent)
+      - alert: AIOpsHighLatencyP95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AIOps p95 latency above 2s"
+          description: "p95={{ $value }}s. See runbooks/high-latency."
+
+      - alert: AIOpsErrorRateHigh
+        expr: |
+          (
+            sum(rate(http_requests_total{code=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_requests_total[5m])), 1e-9)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AIOps 5xx error rate > 5%"
+          description: "Error rate={{ $value | humanizePercentage }}. See runbooks/service-down."
+
+  - name: aiops_llm
+    interval: 30s
+    rules:
+      - alert: AIOpsLLMUnavailable
+        expr: |
+          (
+            sum(rate(llm_requests_total{result="error"}[10m]))
+            /
+            clamp_min(sum(rate(llm_requests_total[10m])), 1e-9)
+          ) > 0.5
+          or
+          up{job="aiops-app"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM path unavailable or high error ratio"
+          description: "Rule fallback should still serve. See runbooks/llm-unavailable."

@@ -1,0 +1,67 @@
+---
+# Deploy the sibling AI Ops stack onto a cloud VM with Ansible roles.
+#
+# Usage:
+#   cd ansible
+#   cp inventory/aliyun.example.ini inventory/aliyun.ini   # edit host
+#   ansible-galaxy collection install -r requirements.yml
+#   ansible-playbook -i inventory/aliyun.ini playbooks/deploy.yml
+#
+# Optional: -e pull_ollama_model=true  (downloads a multi-GB model)
+
+- name: Deploy AIOps stack to cloud VM
+  hosts: aiops
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../group_vars/all.yml
+
+  pre_tasks:
+    - name: Assert core variables are set
+      ansible.builtin.assert:
+        that:
+          - app_dir is defined
+          - app_http_port is defined
+        quiet: true
+      tags: [always]
+
+    - name: Warn if Grafana password is still the placeholder
+      ansible.builtin.debug:
+        msg: >-
+          grafana_admin_password is CHANGE_ME — pass -e grafana_admin_password=...
+          or use ansible-vault for anything beyond a local learning run.
+      when: grafana_admin_password == "CHANGE_ME"
+      tags: [always]
+
+  roles:
+    - role: common
+      tags: [common]
+    - role: docker
+      tags: [docker]
+    - role: aiops_app
+      tags: [app]
+    - role: monitoring
+      tags: [monitoring]
+    - role: hardening
+      tags: [hardening]
+
+  post_tasks:
+    - name: Wait for API health endpoint
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ app_http_port }}/healthz"
+        status_code: 200
+      register: health
+      retries: 30
+      delay: 5
+      until: health.status is defined and health.status == 200
+      tags: [app, health]
+
+    - name: Show endpoints
+      ansible.builtin.debug:
+        msg:
+          - "API:          http://{{ ansible_host }}:{{ app_http_port }}/healthz"
+          - "Grafana:      http://{{ ansible_host }}:{{ grafana_http_port }}"
+          - "Prometheus:   http://{{ ansible_host }}:{{ prometheus_http_port }}"
+          - "Alertmanager: http://{{ ansible_host }}:{{ alertmanager_http_port }}"
+          - "Open the same ports in the cloud Security Group / firewall."
+      tags: [always]

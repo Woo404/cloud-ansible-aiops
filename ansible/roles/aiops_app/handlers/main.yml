@@ -1,0 +1,6 @@
+---
+- name: Restart aiops compose
+  ansible.builtin.command:
+    cmd: docker compose -p {{ compose_project_name }} up -d
+    chdir: "{{ app_dir }}"
+  changed_when: true

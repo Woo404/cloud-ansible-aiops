@@ -1,0 +1,12 @@
+---
+common_packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - git
+  - htop
+  - jq
+  - python3
+  - rsync
+  - unzip
+  - ufw

@@ -1,0 +1,42 @@
+---
+- name: Ensure monitoring overlay directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ monitoring_overlay_dir }}"
+    - "{{ monitoring_overlay_dir }}/alertmanager"
+    - "{{ monitoring_overlay_dir }}/prometheus"
+    - "{{ monitoring_overlay_dir }}/grafana"
+
+- name: Deploy Alertmanager config
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../monitoring/alertmanager/alertmanager.yml"
+    dest: "{{ monitoring_overlay_dir }}/alertmanager/alertmanager.yml"
+    mode: "0644"
+
+- name: Deploy Prometheus recording/alerting rules
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../monitoring/alertmanager/aiops_rules.yml"
+    dest: "{{ monitoring_overlay_dir }}/prometheus/aiops_rules.yml"
+    mode: "0644"
+
+- name: Deploy Grafana SLO dashboard JSON
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../monitoring/grafana/aiops_slo_dashboard.json"
+    dest: "{{ monitoring_overlay_dir }}/grafana/aiops_slo_dashboard.json"
+    mode: "0644"
+
+- name: Deploy prometheus.yml overlay template
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ monitoring_overlay_dir }}/prometheus/prometheus.yml"
+    mode: "0644"
+  notify: Reload prometheus
+
+- name: Note monitoring overlay location
+  ansible.builtin.debug:
+    msg: >-
+      Monitoring overlays written under {{ monitoring_overlay_dir }}.
+      Mount or sync them into the sibling compose stack as documented in TUTORIAL_CN.md.

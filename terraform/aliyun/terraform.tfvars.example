@@ -1,0 +1,5 @@
+region        = "cn-hangzhou"
+vswitch_id    = "vsw-xxxxxxxx"
+key_name      = "your-keypair"
+allowed_cidr  = "x.x.x.x/32"   # prefer your office/home IP
+instance_type = "ecs.t6-c1m1.large"

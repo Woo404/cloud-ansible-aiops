@@ -1,0 +1,88 @@
+---
+- name: Ensure app and rollback directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ app_dir }}"
+    - "{{ app_dir }}/.rollback"
+
+- name: Snapshot existing compose for rollback
+  ansible.builtin.shell: |
+    set -euo pipefail
+    stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    dest="{{ app_dir }}/.rollback/${stamp}"
+    mkdir -p "$dest"
+    if [ -f "{{ app_dir }}/docker-compose.yml" ]; then
+      cp "{{ app_dir }}/docker-compose.yml" "$dest/"
+    fi
+    if [ -f "{{ app_dir }}/.env" ]; then
+      cp "{{ app_dir }}/.env" "$dest/"
+    fi
+    echo "$stamp"
+  args:
+    executable: /bin/bash
+  register: aiops_app_rollback_stamp_out
+  changed_when: false
+  failed_when: false
+
+- name: Clone sibling AI Ops repo
+  ansible.builtin.git:
+    repo: "{{ aiops_git_repo }}"
+    dest: "{{ app_dir }}"
+    version: "{{ aiops_git_version }}"
+    force: false
+    update: true
+  when: aiops_source_mode == "git"
+
+- name: Sync sibling AI Ops repo from controller
+  ansible.posix.synchronize:
+    src: "{{ aiops_local_src }}/"
+    dest: "{{ app_dir }}/"
+    delete: false
+    rsync_opts:
+      - "--exclude=.git"
+      - "--exclude=.venv"
+      - "--exclude=__pycache__"
+      - "--exclude=.pytest_cache"
+      - "--exclude=*.pyc"
+      - "--exclude=ansible/inventory.ini"
+  when: aiops_source_mode == "local"
+
+- name: Render application .env
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ app_dir }}/.env"
+    mode: "0600"
+
+- name: Build and start compose stack
+  ansible.builtin.command:
+    cmd: docker compose -p {{ compose_project_name }} --env-file .env up -d --build
+    chdir: "{{ app_dir }}"
+  register: aiops_app_compose_up
+  changed_when: >-
+    'Started' in (aiops_app_compose_up.stderr | default(''))
+    or 'Creating' in (aiops_app_compose_up.stderr | default(''))
+    or aiops_app_compose_up.rc == 0
+
+- name: Optionally pull Ollama model
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -p {{ compose_project_name }} exec -T ollama
+      ollama pull {{ llm_model }}
+    chdir: "{{ app_dir }}"
+  when: pull_ollama_model | bool
+  async: 1800
+  poll: 30
+  failed_when: false
+
+- name: Prune old rollback snapshots
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd "{{ app_dir }}/.rollback"
+    ls -1dt */ 2>/dev/null | tail -n +$(({{ aiops_app_keep_rollback_copies }} + 1)) | xargs -r rm -rf
+  args:
+    executable: /bin/bash
+  changed_when: false
+  failed_when: false

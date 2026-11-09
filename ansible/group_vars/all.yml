@@ -1,0 +1,53 @@
+---
+# Non-secret defaults. Override per environment; keep secrets out of git.
+# Copy group_vars/vault.example.yml -> vault.yml for encrypted secrets if needed.
+
+app_name: aiops-log-assistant
+app_dir: /opt/aiops
+compose_project_name: aiops
+app_http_port: 8000
+grafana_http_port: 3000
+prometheus_http_port: 9090
+alertmanager_http_port: 9093
+ollama_http_port: 11434
+
+# Sibling app source: either a local path synced by synchronize,
+# or a git URL cloned on the host.
+aiops_source_mode: git  # git | local
+aiops_git_repo: https://github.com/Woo404/aiops-log-assistant.git
+aiops_git_version: main
+# When mode=local, set this to the path of your checked-out sibling repo:
+aiops_local_src: "{{ playbook_dir }}/../../aiops-log-assistant"
+
+llm_model: qwen2.5:7b
+pull_ollama_model: false
+enable_redaction: true
+enable_rule_fallback: true
+
+# Docker Compose image tags (override for pin/rollback)
+prometheus_image: prom/prometheus:v2.55.1
+grafana_image: grafana/grafana:11.3.1
+alertmanager_image: prom/alertmanager:v0.27.0
+ollama_image: ollama/ollama:latest
+
+# Ports opened by hardening / cloud SG (keep in sync with terraform)
+open_ports:
+  - 22
+  - "{{ app_http_port }}"
+  - "{{ grafana_http_port }}"
+  - "{{ prometheus_http_port }}"
+  - "{{ alertmanager_http_port }}"
+
+timezone: Asia/Shanghai
+ntp_servers:
+  - ntp.aliyun.com
+  - time.cloudflare.com
+
+# Grafana admin password: set via vault or -e; never commit real values
+grafana_admin_user: admin
+grafana_admin_password: "CHANGE_ME"
+
+# SLO thresholds used by Alertmanager rules (also documented in runbooks)
+slo_availability_target: 0.995
+slo_p95_latency_seconds: 2.0
+slo_error_rate_threshold: 0.05
